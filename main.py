@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+import json
 import os
 import sys
 from pathlib import Path
@@ -7,6 +9,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from src.agent import KnowledgeBaseAgent
+from src.chunking import FixedSizeChunker, RecursiveChunker, SentenceChunker
 from src.embeddings import (
     EMBEDDING_PROVIDER_ENV,
     LOCAL_EMBEDDING_MODEL,
@@ -18,110 +21,150 @@ from src.embeddings import (
 from src.models import Document
 from src.store import EmbeddingStore
 
+# Force UTF-8 output on Windows terminals
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
+# ── Config ────────────────────────────────────────────────────────────────────
+
 SAMPLE_FILES = [
-    "data/python_intro.txt",
-    "data/vector_store_notes.md",
-    "data/rag_system_design.md",
-    "data/customer_support_playbook.txt",
-    "data/chunking_experiment_report.md",
-    "data/vi_retrieval_notes.md",
+    "data/Braised_Tofu.md",
+    "data/Duck_Porridge.md",
+    "data/Savory_Pancakes.md",
+    "data/Grilled_Snails.md",
+    "data/Orange_Fruit_Skin_Jam.md",
 ]
 
+FILE_METADATA = {
+    "Braised_Tofu":        {"category": "main_dish", "difficulty": "easy",   "source": "vietnamtourism"},
+    "Duck_Porridge":       {"category": "main_dish", "difficulty": "medium", "source": "vietnamtourism"},
+    "Savory_Pancakes":     {"category": "main_dish", "difficulty": "hard",   "source": "vietnamtourism"},
+    "Grilled_Snails":      {"category": "seafood",   "difficulty": "easy",   "source": "vietnamtourism"},
+    "Orange_Fruit_Skin_Jam": {"category": "dessert", "difficulty": "easy",   "source": "vietnamtourism"},
+}
 
-def load_documents_from_files(file_paths: list[str]) -> list[Document]:
-    """Load documents from file paths for the manual demo."""
-    allowed_extensions = {".md", ".txt"}
-    documents: list[Document] = []
+BENCHMARK_FILE = "benchmark_queries.json"
 
+CHUNKERS = {
+    "fixed":     FixedSizeChunker(chunk_size=300, overlap=50),
+    "sentence":  SentenceChunker(max_sentences_per_chunk=3),
+    "recursive": RecursiveChunker(chunk_size=300),
+}
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def load_benchmark(path: str) -> list[dict]:
+    p = Path(path)
+    if not p.exists():
+        fallback = Path("data") / path
+        if fallback.exists():
+            p = fallback
+    if not p.exists():
+        print(f"Benchmark file not found: {path}")
+        sys.exit(1)
+    with open(p, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def load_raw_files(file_paths: list[str]) -> list[tuple[str, str, dict]]:
+    raw: list[tuple[str, str, dict]] = []
     for raw_path in file_paths:
         path = Path(raw_path)
-
-        if path.suffix.lower() not in allowed_extensions:
-            print(f"Skipping unsupported file type: {path} (allowed: .md, .txt)")
+        if path.suffix.lower() not in {".md", ".txt"}:
             continue
-
-        if not path.exists() or not path.is_file():
-            print(f"Skipping missing file: {path}")
+        if not path.exists():
+            print(f"Missing: {path}")
             continue
-
         content = path.read_text(encoding="utf-8")
-        documents.append(
-            Document(
-                id=path.stem,
-                content=content,
-                metadata={"source": str(path), "extension": path.suffix.lower()},
-            )
-        )
+        meta = {"source": path.stem, "extension": path.suffix.lower()}
+        meta.update(FILE_METADATA.get(path.stem, {}))
+        raw.append((path.stem, content, meta))
+    return raw
 
-    return documents
+
+def make_chunked_documents(raw_files: list[tuple[str, str, dict]], chunker) -> list[Document]:
+    docs: list[Document] = []
+    for doc_id, content, meta in raw_files:
+        for i, chunk in enumerate(chunker.chunk(content)):
+            docs.append(Document(
+                id=f"{doc_id}:{i}",
+                content=chunk,
+                metadata={**meta, "doc_id": doc_id, "chunk_index": i},
+            ))
+    return docs
+
+
+def pick_embedder(provider: str):
+    if provider == "local":
+        try:
+            return LocalEmbedder(model_name=os.getenv("LOCAL_EMBEDDING_MODEL", LOCAL_EMBEDDING_MODEL))
+        except Exception as e:
+            print(f"  LocalEmbedder failed ({e}), falling back to mock.")
+    elif provider == "openai":
+        try:
+            return OpenAIEmbedder(model_name=os.getenv("OPENAI_EMBEDDING_MODEL", OPENAI_EMBEDDING_MODEL))
+        except Exception as e:
+            print(f"  OpenAIEmbedder failed ({e}), falling back to mock.")
+    return _mock_embed
 
 
 def demo_llm(prompt: str) -> str:
-    """A simple mock LLM for manual RAG testing."""
-    preview = prompt[:400].replace("\n", " ")
-    return f"[DEMO LLM] Generated answer from prompt preview: {preview}..."
+    """Extract context lines from prompt and return a readable mock answer."""
+    context_section = prompt.split("Context:")[1].split("Question:")[0].strip() if "Context:" in prompt else ""
+    lines = [ln.strip() for ln in context_section.splitlines() if ln.strip()]
+    return " ".join(lines)[:400] + ("..." if len(" ".join(lines)) > 400 else "")
 
 
-def run_manual_demo(question: str | None = None, sample_files: list[str] | None = None) -> int:
-    files = sample_files or SAMPLE_FILES
-    query = question or "Summarize the key information from the loaded files."
-
-    print("=== Manual File Test ===")
-    print("Accepted file types: .md, .txt")
-    print("Input file list:")
-    for file_path in files:
-        print(f"  - {file_path}")
-
-    docs = load_documents_from_files(files)
-    if not docs:
-        print("\nNo valid input files were loaded.")
-        print("Create files matching the sample paths above, then rerun:")
-        print("  python3 main.py")
-        return 1
-
-    print(f"\nLoaded {len(docs)} documents")
-    for doc in docs:
-        print(f"  - {doc.id}: {doc.metadata['source']}")
-
-    load_dotenv(override=False)
-    provider = os.getenv(EMBEDDING_PROVIDER_ENV, "mock").strip().lower()
-    if provider == "local":
-        try:
-            embedder = LocalEmbedder(model_name=os.getenv("LOCAL_EMBEDDING_MODEL", LOCAL_EMBEDDING_MODEL))
-        except Exception:
-            embedder = _mock_embed
-    elif provider == "openai":
-        try:
-            embedder = OpenAIEmbedder(model_name=os.getenv("OPENAI_EMBEDDING_MODEL", OPENAI_EMBEDDING_MODEL))
-        except Exception:
-            embedder = _mock_embed
-    else:
-        embedder = _mock_embed
-
-    print(f"\nEmbedding backend: {getattr(embedder, '_backend_name', embedder.__class__.__name__)}")
-
-    store = EmbeddingStore(collection_name="manual_test_store", embedding_fn=embedder)
-    store.add_documents(docs)
-
-    print(f"\nStored {store.get_collection_size()} documents in EmbeddingStore")
-    print("\n=== EmbeddingStore Search Test ===")
-    print(f"Query: {query}")
-    search_results = store.search(query, top_k=3)
-    for index, result in enumerate(search_results, start=1):
-        print(f"{index}. score={result['score']:.3f} source={result['metadata'].get('source')}")
-        print(f"   content preview: {result['content'][:120].replace(chr(10), ' ')}...")
-
-    print("\n=== KnowledgeBaseAgent Test ===")
-    agent = KnowledgeBaseAgent(store=store, llm_fn=demo_llm)
-    print(f"Question: {query}")
-    print("Agent answer:")
-    print(agent.answer(query, top_k=3))
-    return 0
-
+# ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> int:
-    question = " ".join(sys.argv[1:]).strip() if len(sys.argv) > 1 else None
-    return run_manual_demo(question=question)
+    load_dotenv(override=False)
+
+    # Pick strategy from CLI: python main.py [strategy] ["optional query override"]
+    args = sys.argv[1:]
+    chosen_strategy: str | None = None
+    if args and args[0] in CHUNKERS:
+        chosen_strategy = args.pop(0)
+
+    provider = os.getenv(EMBEDDING_PROVIDER_ENV, "mock").strip().lower()
+    embedder = pick_embedder(provider)
+    backend_name = getattr(embedder, "_backend_name", embedder.__class__.__name__)
+
+    raw_files = load_raw_files(SAMPLE_FILES)
+    if not raw_files:
+        print("No valid documents loaded.")
+        return 1
+
+    benchmarks = load_benchmark(BENCHMARK_FILE)
+
+    strategies_to_run = {chosen_strategy: CHUNKERS[chosen_strategy]} if chosen_strategy else CHUNKERS
+
+    for strategy_name, chunker in strategies_to_run.items():
+        docs = make_chunked_documents(raw_files, chunker)
+        store = EmbeddingStore(collection_name=f"store_{strategy_name}", embedding_fn=embedder)
+        store.add_documents(docs)
+        agent = KnowledgeBaseAgent(store=store, llm_fn=demo_llm)
+
+        print()
+        print("=" * 70)
+        print(f"  Strategy : {strategy_name.upper()}  ({len(docs)} chunks)")
+        print(f"  Embedder : {backend_name}")
+        print("=" * 70)
+
+        for item in benchmarks:
+            query       = item["query"]
+            gold_answer = item["gold_answer"]
+            result      = agent.answer_with_details(query, top_k=3)
+
+            print(f"\nQ{item['id']}: {query}")
+            print(f"  Gold   : {gold_answer}")
+            for r in result["top_results"]:
+                print(f"  #{r['rank']} [{r['doc_id']} chunk#{r['chunk_index']}] score={r['score']:.4f}  {r['content_preview']}...")
+            print(f"  Chatbot: {result['answer']}")
+            print()
+
+    return 0
 
 
 if __name__ == "__main__":

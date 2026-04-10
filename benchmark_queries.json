@@ -1,0 +1,27 @@
+[
+  {
+    "id": 1,
+    "query": "What ingredients are needed for braised tofu with quail eggs?",
+    "gold_answer": "100-200g fried tofu slices, 15-20 quail eggs, spring onion, shallot, salt, fish sauce, sugar, pepper, soy sauce, and Maggi's seasoning powder."
+  },
+  {
+    "id": 2,
+    "query": "How do you make the dipping sauce for grilled snails?",
+    "gold_answer": "Mix salt, pepper, lemon juice, and sugar together. Serve with Vietnamese mint herb."
+  },
+  {
+    "id": 3,
+    "query": "What is the process for making duck porridge?",
+    "gold_answer": "Boil duck with ginger and grilled onion. Roast sticky rice separately, then cook in broth until soft. Season and top with fried purple onion and pepper."
+  },
+  {
+    "id": 4,
+    "query": "Which dish is a dessert and how is it stored?",
+    "gold_answer": "Orange Fruit Skin Jam (Mut Vo Cam). After cooking, wait to cool, then store in a jar and use day by day."
+  },
+  {
+    "id": 5,
+    "query": "Which dishes require shrimp as an ingredient?",
+    "gold_answer": "Vietnamese Mini Savory Pancakes (Banh Khot) require fresh shrimps (10 pieces, boiled and cut in half) and dried shrimp (100g, ground well)."
+  }
+]

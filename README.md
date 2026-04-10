@@ -56,6 +56,12 @@ print(len(embedder("embedding smoke test")))
 PY
 ```
 
+Powershell
+```
+python -c "from src import LocalEmbedder; embedder = LocalEmbedder(); print(embedder._backend_name, len(embedder('embedding smoke test')))"
+
+```
+
 - Package `src` hỗ trợ `all-MiniLM-L6-v2` qua `sentence-transformers`.
 - Lần chạy đầu tiên model sẽ được tải về và cache local.
 

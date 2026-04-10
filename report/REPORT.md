@@ -76,7 +76,7 @@ Chunk count **tăng thêm 2** (từ 23 → 25) vì bước tiến mỗi chunk ng
 
 ### Domain & Lý Do Chọn
 
-**Domain:** Vietnamese cooking recipes
+**Domain:** Vietnamese Cooking Recipes 
 
 **Tại sao nhóm chọn domain này?**
 
@@ -94,12 +94,12 @@ Chunk count **tăng thêm 2** (từ 23 → 25) vì bước tiến mỗi chunk ng
 ### Metadata Schema
 | Trường metadata | Kiểu   | Ví dụ giá trị | Tại sao hữu ích cho retrieval? |
 |-----------------|--------|---------------|-------------------------------|
-| source | string | "Braised_Tofu" | Tên gốc document — dùng để trace kết quả về file nguồn |
-| extension | string | ".md" | Loại file — hỗ trợ filter theo định dạng nếu mix .md/.txt |
-| category | string | "main_dish", "seafood", "dessert" | Filter theo loại món — VD: chỉ tìm trong dessert hoặc seafood |
-| difficulty | string | "easy", "medium", "hard" | Filter theo độ khó — VD: chỉ tìm món dễ nấu |
-| doc_id | string | "Orange_Fruit_Skin_Jam" | ID gốc của document trước khi chunk — dùng để delete_document và group chunks cùng nguồn |
-| chunk_index | int | 0, 1, 2... | Vị trí chunk trong document — hỗ trợ debug và tái tạo thứ tự nội dung gốc |
+| `source` | `string` | `"Braised_Tofu"` | Tên gốc document — dùng để trace kết quả về file nguồn |
+| `extension` | `string` | `".md"` | Loại file — hỗ trợ filter theo định dạng nếu mix `.md`/`.txt` |
+| `category` | `string` | `"main_dish"`, `"seafood"`, `"dessert"` | Filter theo loại món — VD: chỉ tìm trong dessert hoặc seafood |
+| `difficulty` | `string` | `"easy"`, `"medium"`, `"hard"` | Filter theo độ khó — VD: chỉ tìm món dễ nấu |
+| `doc_id` | `string` | `"Orange_Fruit_Skin_Jam"` | ID gốc của document trước khi chunk — dùng để `delete_document` và group chunks cùng nguồn |
+| `chunk_index` | `int` | `0`, `1`, `2`... | Vị trí chunk trong document — hỗ trợ debug và tái tạo thứ tự nội dung gốc |
 ---
 ## 3. Chunking Strategy — Cá nhân chọn, nhóm so sánh (15 điểm)
 
